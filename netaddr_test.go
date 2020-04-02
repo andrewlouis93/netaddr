@@ -42,6 +42,48 @@ func TestParseString(t *testing.T) {
 	}
 }
 
+func TestIPMarshalUnmarshal(t *testing.T) {
+	tests := []string{
+		"",
+		"1.2.3.4",
+		"0.0.0.0",
+		"::",
+		"::1",
+		"fe80::1cc0:3e8c:119f:c2e1%ens18",
+		"::ffff:c000:1234",
+	}
+
+	for _, s := range tests {
+		t.Run(s, func(t *testing.T) {
+			// Ensure that JSON  (and by extension, text) marshaling is
+			// sane by entering quoted input.
+			orig := `"` + s + `"`
+
+			var ip IP
+			if err := json.Unmarshal([]byte(orig), &ip); err != nil {
+				t.Fatalf("failed to unmarshal: %v", err)
+			}
+
+			ipb, err := json.Marshal(ip)
+			if err != nil {
+				t.Fatalf("failed to marshal: %v", err)
+			}
+
+			back := string(ipb)
+			if orig != back {
+				t.Errorf("Marshal = %q; want %q", back, orig)
+			}
+		})
+	}
+}
+
+func TestIPUnmarshalTextNonZero(t *testing.T) {
+	ip := mustIP("::1")
+	if err := ip.UnmarshalText([]byte("xxx")); err == nil {
+		t.Fatal("unmarshaled into non-empty IP")
+	}
+}
+
 func TestIPIPAddr(t *testing.T) {
 	tests := []struct {
 		name string
@@ -207,7 +249,13 @@ func TestIs4In6(t *testing.T) {
 	}{
 		{IP{}, false, IP{}},
 		{mustIP("::ffff:c000:0280"), true, mustIP("192.0.2.128")},
+		{mustIP("::ffff:192.0.2.128"), true, mustIP("192.0.2.128")},
 		{mustIP("::fffe:c000:0280"), false, mustIP("::fffe:c000:0280")},
+		{mustIP("::ffff:127.001.002.003"), true, mustIP("127.1.2.3")},
+		{mustIP("::ffff:7f01:0203"), true, mustIP("127.1.2.3")},
+		{mustIP("0:0:0:0:0000:ffff:127.1.2.3"), true, mustIP("127.1.2.3")},
+		{mustIP("0:0:0:0:000000:ffff:127.1.2.3"), true, mustIP("127.1.2.3")},
+		{mustIP("0:0:0:0::ffff:127.1.2.3"), true, mustIP("127.1.2.3")},
 		{mustIP("::1"), false, mustIP("::1")},
 		{mustIP("1.2.3.4"), false, mustIP("1.2.3.4")},
 	}
